@@ -27,8 +27,8 @@ contract QuadraticVoting {
     uint256 public proposalCounter;
 
     VotingToken public token;
-    mapping(address => uint) public participants; // mapa para registrar a nuestros participantes
-    uint256[] pendingProposals;
+    mapping(address => bool) public participants; // mapa para registrar a nuestros participantes
+    uint256[] pendingProposals; // array de propuestas en marcha para poder recorrerlas
     uint256[] approvedProposals;
     mapping(uint256 => Proposal) public proposals;
 
@@ -65,20 +65,20 @@ contract QuadraticVoting {
 
     function addParticipant() external payable {
         require(msg.value >= tokenPrice, "At least buy one token");
-        require(participants[msg.sender] == 0, "Participant already exists");
+        require(!participants[msg.sender], "Participant already exists");
         uint256 tokensToMint = msg.value;
         token.mint(msg.sender, tokensToMint);
 
-        participants[msg.sender] = 1;
+        participants[msg.sender] = true;
         numParticipant++;
     }
 
     function removeParticipant() external {
-        require(participants[msg.sender] > 0, "Participant not found");
+        require(participants[msg.sender], "Participant not found");
         payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
         token.burn(msg.sender, token.balanceOf(msg.sender));
 
-        participants[msg.sender] = 0;
+        delete participants[msg.sender];
         numParticipant--;
     }
 
@@ -89,7 +89,7 @@ contract QuadraticVoting {
         address executableContract
     ) external {
         require(votingOpen, "Voting not open");
-        require(participants[msg.sender] > 0, "You are not a participant");
+        require(participants[msg.sender], "You are not a participant");
         Proposal storage p = proposals[proposalCounter];
         p.title = title;
         p.description = description;
@@ -105,6 +105,7 @@ contract QuadraticVoting {
         require(!proposals[proposalId].approved, "Proposal already approved");
         require(!proposals[proposalId].cancelled, "Proposal already cancelled");
         require(proposals[proposalId].owner == msg.sender, "");
+        // TODO: No funciona
         for (uint256 i = 0; i < pendingProposals.length; i++) {
             if (pendingProposals[i] == proposalId) {
                 pendingProposals[i] = pendingProposals[
@@ -118,6 +119,8 @@ contract QuadraticVoting {
         for (uint256 i = 0; i < p.voters.length; i++) {
             token.mint(p.voters[i], p.votesRecord[p.voters[i]]);
         }
+
+        delete proposals[proposalId];
     }
 
     function buyTokens() external payable {
@@ -244,6 +247,7 @@ contract QuadraticVoting {
                 proposal.numVotes * proposal.numVotes
             );
             proposal.approved = true;
+            // TODO: No funciona
             for (uint256 i = 0; i < pendingProposals.length; i++) {
                 if (pendingProposals[i] == proposalId) {
                     pendingProposals[i] = pendingProposals[

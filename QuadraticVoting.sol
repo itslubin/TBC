@@ -1,38 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-interface IExecutableProposal {
-    function executeProposal(
-        uint256 proposalId,
-        uint256 numVotes,
-        uint256 numTokens
-    ) external payable;
-}
-
-contract VotingToken is ERC20 {
-    address owner;
-
-    constructor(address owner_) ERC20("Voting Token", "VT") {
-        owner = owner_;
-    }
-
-    function mint(address to, uint256 amount) external {
-        require(msg.sender == owner, "Can only execute by owner");
-        _mint(to, amount);
-    }
-
-    function burn(address from, uint256 amount) external {
-        require(msg.sender == owner, "Can only execute by owner");
-        _burn(from, amount);
-    }
-
-    function getTotalSupply() public view returns (uint256) {
-        require(msg.sender == owner, "Can only execute by owner");
-        return totalSupply();
-    }
-}
+import "./VotingToken.sol";
+import "./IExecutableProposal.sol";
 
 contract QuadraticVoting {
     struct Proposal {
@@ -57,10 +27,26 @@ contract QuadraticVoting {
     uint256 public proposalCounter;
 
     VotingToken public token;
-    mapping(address => uint) public participants;
+    mapping(address => uint) public participants; // mapa para registrar a nuestros participantes
     uint256[] pendingProposals;
     uint256[] approvedProposals;
     mapping(uint256 => Proposal) public proposals;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only executable by contract owner");
+        _; // Este guión bajo indica al compilador que incluya el cuerpo de la función aquí
+    }
+
+     modifier votingIsOpen() {
+        require(votingOpen, "Voting is not open");
+        _;
+    }
+
+    modifier votingIsClosed() {
+        require(!votingOpen, "Voting is still open");
+        _;
+    }
+
 
     constructor(uint256 _tokenPrice, uint256 _numToken) {
         token = new VotingToken(address(this));
@@ -71,9 +57,8 @@ contract QuadraticVoting {
         numParticipant = 0;
     }
 
-    function openVoting(uint256 initialBudget) external {
+    function openVoting(uint256 initialBudget) external onlyOwner {
         require(!votingOpen, "Voting already open");
-        require(owner == msg.sender, "Only execute by contract owner");
         totalBudget = initialBudget;
         votingOpen = true;
     }

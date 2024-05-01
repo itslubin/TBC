@@ -53,12 +53,11 @@ contract QuadraticVoting {
     uint256 public totalBudget;
     uint256 public numToken;
     uint256 public tokenPrice;
-
-    uint256 public participantCounter;
+    uint256 public numParticipant;
     uint256 public proposalCounter;
 
     VotingToken public token;
-    address[] public participants;
+    mapping(address => uint) public participants;
     uint256[] pendingProposals;
     uint256[] approvedProposals;
     mapping(uint256 => Proposal) public proposals;
@@ -69,7 +68,7 @@ contract QuadraticVoting {
         numToken = _numToken;
         owner = msg.sender;
         proposalCounter = 0;
-        participantCounter = 0;
+        numParticipant = 0;
     }
 
     function openVoting(uint256 initialBudget) external {
@@ -81,30 +80,21 @@ contract QuadraticVoting {
 
     function addParticipant() external payable {
         require(msg.value >= tokenPrice, "At least buy one token");
-        for (uint256 i = 0; i < participants.length; i++) {
-            require(
-                participants[i] != msg.sender,
-                "Participant already exists"
-            );
-        }
+        require(participants[msg.sender] == 0, "Participant already exists");
         uint256 tokensToMint = msg.value;
         token.mint(msg.sender, tokensToMint);
 
-        participantCounter++;
+        participants[msg.sender] = 1;
+        numParticipant++;
     }
 
     function removeParticipant() external {
-        bool isFound = false;
-        for (uint256 i = 0; i < participants.length; i++) {
-            if (participants[i] == msg.sender) {
-                participants[i] = participants[participants.length - 1];
-                participants.pop();
-                isFound = true;
-            }
-        }
-        require(isFound, "Participant not found");
+        require(participants[msg.sender] > 0, "Participant not found");
         payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
         token.burn(msg.sender, token.balanceOf(msg.sender));
+
+        participants[msg.sender] = 0;
+        numParticipant--;
     }
 
     function addProposal(
@@ -114,6 +104,7 @@ contract QuadraticVoting {
         address executableContract
     ) external {
         require(votingOpen, "Voting not open");
+        require(participants[msg.sender] > 0, "You are not a participant");
         Proposal storage p = proposals[proposalCounter];
         p.title = title;
         p.description = description;
@@ -127,6 +118,7 @@ contract QuadraticVoting {
     function cancelProposal(uint256 proposalId) external {
         require(votingOpen, "Voting not open");
         require(!proposals[proposalId].approved, "Proposal already approved");
+        require(!proposals[proposalId].cancelled, "Proposal already cancelled");
         require(proposals[proposalId].owner == msg.sender, "");
         for (uint256 i = 0; i < pendingProposals.length; i++) {
             if (pendingProposals[i] == proposalId) {
@@ -211,6 +203,8 @@ contract QuadraticVoting {
 
     function stake(uint256 proposalId, uint256 numVotes) external {
         require(votingOpen, "Voting not open");
+        require(!proposals[proposalId].approved, "Proposal has been approved");
+        require(!proposals[proposalId].cancelled, "Proposal has been cancelled");
         uint256 currentVotes = proposals[proposalId].votesRecord[msg.sender];
         if (currentVotes == 0) {
             proposals[proposalId].voters.push(msg.sender);
@@ -232,10 +226,9 @@ contract QuadraticVoting {
         external
     {
         require(votingOpen, "Voting not open");
-        require(
-            !proposals[proposalId].approved,
-            "This proposal has been approved."
-        );
+        require(!proposals[proposalId].approved, "Proposal has been approved");
+        require(!proposals[proposalId].cancelled, "Proposal has been cancelled");
+        
         uint256 currentVotes = proposals[proposalId].votesRecord[msg.sender];
         require(currentVotes >= numVotes, "");
 
@@ -252,9 +245,7 @@ contract QuadraticVoting {
     function _checkAndExecuteProposal(uint256 proposalId) internal {
         Proposal storage proposal = proposals[proposalId];
         uint256 threshold = ((2 + (10 * proposal.budget) / totalBudget) *
-            participants.length) /
-            10 +
-            pendingProposals.length;
+            numParticipant) / 10 + pendingProposals.length;
         if (
             proposal.numVotes > threshold &&
             proposal.budget > 0 &&

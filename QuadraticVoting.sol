@@ -5,6 +5,7 @@ import "./VotingToken.sol";
 import "./IExecutableProposal.sol";
 
 contract QuadraticVoting {
+    // Estructura para almacenar información de una propuesta
     struct Proposal {
         address owner;
         string title;
@@ -12,12 +13,13 @@ contract QuadraticVoting {
         uint256 budget;
         uint256 numVotes;
         address executableContract;
-        mapping(address => uint256) votesRecord; // gasto total de cada usuario en la propuesta
+        mapping(address => uint256) votesRecord; // Registro de los votos de cada usuario en la propuesta
         address[] voters;
         bool approved;
         bool cancelled;
     }
 
+    // Variables de estado
     address owner;
     bool public votingOpen;
     uint256 public totalBudget;
@@ -26,27 +28,40 @@ contract QuadraticVoting {
     uint256 public numParticipant;
     uint256 public proposalCounter;
 
+    // Contrato ERC20 para tokens de votación
     VotingToken public token;
-    mapping(address => bool) public participants; // mapa para registrar a nuestros participantes
-    uint256[] pendingProposals; // array de propuestas en marcha para poder recorrerlas
+
+    // Mapa para registrar participantes
+    mapping(address => bool) public participants;
+
+    // Array de propuestas pendientes
+    uint256[] pendingProposals;
+
+    // Array de propuestas aprobadas
     uint256[] approvedProposals;
+
+    // Mapa de propuestas
     mapping(uint256 => Proposal) public proposals;
 
+    // Modificador para permitir solo al propietario del contrato ejecutar una función
     modifier onlyOwner() {
         require(msg.sender == owner, "Only executable by contract owner");
-        _; // Este guión bajo indica al compilador que incluya el cuerpo de la función aquí
+        _;
     }
 
+    // Modificador para verificar si la votación está abierta
     modifier votingIsOpen() {
         require(votingOpen, "Voting is not open");
         _;
     }
 
+    // Modificador para verificar si la votación está cerrada
     modifier votingIsClosed() {
         require(!votingOpen, "Voting is still open");
         _;
     }
 
+    // Constructor del contrato
     constructor(uint256 _tokenPrice, uint256 _numToken) {
         token = new VotingToken(address(this));
         tokenPrice = _tokenPrice;
@@ -56,6 +71,7 @@ contract QuadraticVoting {
         numParticipant = 0;
     }
 
+    // Función para abrir la votación
     function openVoting(uint256 initialBudget)
         external
         onlyOwner
@@ -65,16 +81,19 @@ contract QuadraticVoting {
         votingOpen = true;
     }
 
+    // Función para agregar un participante
     function addParticipant() external payable {
         require(msg.value >= tokenPrice, "At least buy one token");
         require(!participants[msg.sender], "Participant already exists");
-        uint256 tokensToMint = msg.value;
-        token.mint(msg.sender, tokensToMint);
 
         participants[msg.sender] = true;
         numParticipant++;
+
+        (bool success, ) = msg.sender.call{value: msg.value}("buyToken()");
+        require(success, "Token purchase failed");
     }
 
+    // Función para eliminar un participante
     function removeParticipant() external {
         require(participants[msg.sender], "Participant not found");
         payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
@@ -84,6 +103,7 @@ contract QuadraticVoting {
         numParticipant--;
     }
 
+    // Función para agregar una propuesta
     function addProposal(
         string memory title,
         string memory description,
@@ -101,6 +121,7 @@ contract QuadraticVoting {
         pendingProposals.push(proposalCounter++);
     }
 
+    // Función para cancelar una propuesta
     function cancelProposal(uint256 proposalId) external votingIsOpen {
         require(!proposals[proposalId].approved, "Proposal already approved");
         require(!proposals[proposalId].cancelled, "Proposal already cancelled");
@@ -121,24 +142,26 @@ contract QuadraticVoting {
         Proposal storage p = proposals[proposalId];
         uint256 vlen = p.voters.length;
         for (uint256 i = 0; i < vlen; i++) {
-            token.mint(p.voters[i], p.votesRecord[p.voters[i]]);
+            token.transfer(p.voters[i], p.votesRecord[p.voters[i]]);
         }
 
-        delete proposals[proposalId];
+        proposals[proposalId].cancelled = true;
     }
 
+    // Función para comprar tokens
     function buyTokens() external payable {
         require(participants[msg.sender], "You are not a participant yet");
         uint256 tokensToMint = msg.value / tokenPrice;
         require(
             token.getTotalSupply() + tokensToMint <= numToken,
-            "There is no more token"
+            "There is no more token available to mint"
         );
         uint256 rest = msg.value % tokenPrice;
         token.mint(msg.sender, tokensToMint);
         if (rest > 0) payable(msg.sender).transfer(rest);
     }
 
+    // Función para vender tokens
     function sellTokens(uint256 amount) external {
         // pull over push
         require(token.balanceOf(msg.sender) >= amount, "Not enough tokens");
@@ -146,18 +169,22 @@ contract QuadraticVoting {
         payable(msg.sender).transfer(amount * tokenPrice);
     }
 
+    // Función para obtener la dirección del contrato ERC20
     function getERC20() public view returns (address) {
         return address(token);
     }
 
+    // Función para obtener las propuestas pendientes
     function getPendingProposals() public view returns (uint256[] memory) {
         return pendingProposals;
     }
 
+    // Función para obtener las propuestas aprobadas
     function getApprovedProposals() public view returns (uint256[] memory) {
         return approvedProposals;
     }
 
+    // Función para obtener las propuestas de señalización
     function getSignalingProposals() public view returns (uint256[] memory) {
         uint256 len = pendingProposals.length;
         uint256[] memory signalingProposals = new uint256[](len);
@@ -171,6 +198,7 @@ contract QuadraticVoting {
         return signalingProposals;
     }
 
+    // Función para obtener información de una propuesta
     function getProposalInfo(uint256 proposalId)
         public
         view
@@ -194,6 +222,7 @@ contract QuadraticVoting {
         );
     }
 
+    // Función para votar en una propuesta
     function stake(uint256 proposalId, uint256 numVotes) external votingIsOpen {
         require(!proposals[proposalId].approved, "Proposal has been approved");
         require(
@@ -227,6 +256,7 @@ contract QuadraticVoting {
         }
     }
 
+    // Función para retirar votos de una propuesta
     function withdrawFromProposal(uint256 proposalId, uint256 numVotes)
         external
         votingIsOpen
@@ -240,6 +270,8 @@ contract QuadraticVoting {
         uint256 currentVotes = proposals[proposalId].votesRecord[msg.sender];
         require(currentVotes >= numVotes, "Not enough votes");
 
+        // TODO: Si el votante tiene 0 votos en la propuesta, borrarlo de la lista de votantes de la propuesta
+
         uint256 newVotes = currentVotes - numVotes;
         proposals[proposalId].numVotes -= numVotes;
         uint256 tokensToReturn = currentVotes *
@@ -247,9 +279,10 @@ contract QuadraticVoting {
             newVotes *
             newVotes;
         totalBudget -= tokensToReturn * tokenPrice;
-        token.transferFrom(address(this), msg.sender, tokensToReturn);
+        token.transfer(msg.sender, tokensToReturn);
     }
 
+    // Función interna para verificar y ejecutar una propuesta
     function _checkAndExecuteProposal(uint256 proposalId) internal {
         uint256 len = pendingProposals.length;
         Proposal storage proposal = proposals[proposalId];
@@ -285,9 +318,10 @@ contract QuadraticVoting {
         }
     }
 
+    // Función para cerrar la votación
     function closeVoting() external onlyOwner votingIsOpen {
         votingOpen = false;
-        // Return tokens for all non-approved proposals
+        // Devolver tokens para todas las propuestas no aprobadas
         uint256 len = pendingProposals.length;
         for (uint256 i = 0; i < len; i++) {
             Proposal storage prop = proposals[pendingProposals[i]];
@@ -303,13 +337,14 @@ contract QuadraticVoting {
 
             uint256 vlen = prop.voters.length;
             for (uint256 j = 0; j < vlen; j++) {
-                token.transferFrom( // allowForPull
-                    address(this),
+                token.transfer( // allowForPull
                     prop.voters[j],
-                    prop.votesRecord[prop.voters[j]]
+                    prop.votesRecord[prop.voters[j]] * prop.votesRecord[prop.voters[j]]
                 );
             }
         }
         payable(owner).transfer(totalBudget);
     }
+
+    
 }

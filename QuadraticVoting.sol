@@ -112,6 +112,7 @@ contract QuadraticVoting {
     ) external votingIsOpen {
         require(participants[msg.sender], "You are not a participant");
         Proposal storage p = proposals[proposalCounter];
+        p.owner = msg.sender;
         p.title = title;
         p.description = description;
         p.budget = budget;

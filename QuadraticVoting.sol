@@ -284,7 +284,9 @@ contract QuadraticVoting {
 
         proposals[proposalId].numVotes -= numVotes;
         proposals[proposalId].numTokens -= tokensToReturn;
-        totalBudget -= tokensToReturn * tokenPrice;
+        if (proposals[proposalId].budget > 0) {
+            totalBudget -= tokensToReturn * tokenPrice;
+        }
         token.transfer(msg.sender, tokensToReturn);
     }
 

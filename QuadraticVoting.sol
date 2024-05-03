@@ -89,8 +89,7 @@ contract QuadraticVoting {
         participants[msg.sender] = true;
         numParticipant++;
 
-        (bool success, ) = msg.sender.call{value: msg.value}("buyToken()");
-        require(success, "Token purchase failed");
+        buyTokens();
     }
 
     // Función para eliminar un participante
@@ -123,6 +122,7 @@ contract QuadraticVoting {
 
     // Función para cancelar una propuesta
     function cancelProposal(uint256 proposalId) external votingIsOpen {
+        require(proposalId < proposalCounter, "Proposal does not exist");
         require(!proposals[proposalId].approved, "Proposal already approved");
         require(!proposals[proposalId].cancelled, "Proposal already cancelled");
         require(
@@ -149,7 +149,7 @@ contract QuadraticVoting {
     }
 
     // Función para comprar tokens
-    function buyTokens() external payable {
+    function buyTokens() public payable {
         require(participants[msg.sender], "You are not a participant yet");
         uint256 tokensToMint = msg.value / tokenPrice;
         require(
@@ -211,6 +211,7 @@ contract QuadraticVoting {
             bool approved
         )
     {
+        require(proposalId < proposalCounter, "Proposal does not exist");
         Proposal storage proposal = proposals[proposalId];
         return (
             proposal.title,
@@ -224,6 +225,7 @@ contract QuadraticVoting {
 
     // Función para votar en una propuesta
     function stake(uint256 proposalId, uint256 numVotes) external votingIsOpen {
+        require(proposalId < proposalCounter, "Proposal does not exist");
         require(!proposals[proposalId].approved, "Proposal has been approved");
         require(
             !proposals[proposalId].cancelled,
@@ -261,6 +263,7 @@ contract QuadraticVoting {
         external
         votingIsOpen
     {
+        require(proposalId < proposalCounter, "Proposal does not exist");
         require(!proposals[proposalId].approved, "Proposal has been approved");
         require(
             !proposals[proposalId].cancelled,
@@ -346,5 +349,4 @@ contract QuadraticVoting {
         payable(owner).transfer(totalBudget);
     }
 
-    
 }

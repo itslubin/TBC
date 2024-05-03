@@ -293,11 +293,7 @@ contract QuadraticVoting {
             numParticipant) /
             10 +
             len;
-        if (
-            proposal.numVotes > threshold &&
-            proposal.budget > 0 &&
-            proposal.budget <= proposal.numVotes * tokenPrice
-        ) {
+        if (proposal.numVotes > threshold || (proposal.budget > 0 && proposal.budget <= proposal.numVotes * tokenPrice)) {
             IExecutableProposal(proposal.executableContract).executeProposal{
                 value: proposal.budget
             }(

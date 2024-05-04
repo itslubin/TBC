@@ -319,14 +319,24 @@ contract QuadraticVoting {
         uint256 currentVotes = proposals[proposalId].votesRecord[msg.sender];
         require(currentVotes >= numVotes, "Not enough votes");
 
-        // TODO: Si el votante tiene 0 votos en la propuesta, borrarlo de la lista de votantes de la propuesta
-
         uint256 newVotes = currentVotes - numVotes;
         uint256 tokensToReturn = currentVotes ** 2 - newVotes ** 2;
 
-        proposals[proposalId].numVotes -= numVotes;
-        proposals[proposalId].numTokens -= tokensToReturn;
-        if (proposals[proposalId].budget > 0) {
+        // Si el votante tiene 0 votos en la propuesta, borrarlo de la lista de votantes de la propuesta
+        Proposal storage prop = proposals[proposalId];
+        if (newVotes == 0) {
+            uint len = prop.voters.length;
+            for (uint i = 0; i < len; i++) {
+                if (prop.voters[i] == msg.sender) {
+                    prop.voters[i] = prop.voters[len - 1];
+                    break;
+                }
+            }
+        }
+
+        prop.numVotes -= numVotes;
+        prop.numTokens -= tokensToReturn;
+        if (prop.budget > 0) {
             totalBudget -= tokensToReturn * tokenPrice;
         }
         token.transfer(msg.sender, tokensToReturn);

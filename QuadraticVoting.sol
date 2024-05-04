@@ -380,13 +380,15 @@ contract QuadraticVoting {
     // Función para cerrar la votación
     function closeVoting() external onlyOwner votingIsOpen {
         votingOpen = false;
+    }
+
+    function withdrawOwner() external onlyOwner votingIsClosed {
         // El presupuesto de la votación no gastado en las propuestas se transfiere al propietario del contrato de votación
         payable(owner).transfer(totalBudget);
     }
 
     // Parte opcional: cada participante extrae sus tokens -> AllowForPull
-    function withdrawTokens() external {
-        require(!votingOpen, "Voting is still open");
+    function withdrawTokens() external votingIsClosed {
         uint256 value = 0;
         uint256 len = pendingProposals.length;
         for (uint256 i = 0; i < len; i++) {
@@ -397,8 +399,7 @@ contract QuadraticVoting {
     }
 
     // Parte opcional: cada propietario del signaling proposal execute sus proposal
-    function executeSignalingProposal(uint256 proposalId) external {
-        require(!votingOpen, "Voting is still open");
+    function executeSignalingProposal(uint256 proposalId) external votingIsClosed {
         require(proposalId < proposalCounter, "Proposal does not exist");
 
         Proposal storage prop = proposals[proposalId];

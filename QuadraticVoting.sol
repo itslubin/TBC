@@ -122,8 +122,6 @@ contract QuadraticVoting {
         address executableContract
     ) external votingIsOpen returns (uint256) {
         require(participants[msg.sender], "You are not a participant");
-        // TODO: Comprobar que la propuesta no está repetida
-
         Proposal storage p = proposals[proposalCounter];
 
         if (budget == 0) { // Guardamos la id de la propuesta de signaling
@@ -182,7 +180,6 @@ contract QuadraticVoting {
             pendingProposals.pop();
         }
 
-        // TODO: Posible ataque de Denial Of Service ??
         Proposal storage p = proposals[proposalId];
         uint256 vlen = p.voters.length;
         for (uint256 i = 0; i < vlen; i++) {

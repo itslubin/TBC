@@ -41,6 +41,9 @@ contract QuadraticVoting {
     // Array de propuestas aprobadas
     uint256[] approvedProposals;
 
+    // Array para las propuestas de signaling
+    uint256[] signalingProposals;
+
     // Mapa de propuestas
     mapping(uint256 => Proposal) public proposals;
 
@@ -80,11 +83,6 @@ contract QuadraticVoting {
     {
         totalBudget = initialBudget;
         votingOpen = true;
-
-        // Inicialización
-        proposalCounter = 0;
-        delete pendingProposals;
-        delete approvedProposals;
     }
 
     // Función para agregar un participante
@@ -101,9 +99,8 @@ contract QuadraticVoting {
     // Función para eliminar un participante
     function removeParticipant() external {
         require(participants[msg.sender], "Participant not found");
-        uint balan = token.balanceOf(msg.sender);
-        token.burn(msg.sender, balan);
-        payable(msg.sender).transfer(balan * tokenPrice);
+        payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
+        token.burn(msg.sender, token.balanceOf(msg.sender));
 
         delete participants[msg.sender];
         numParticipant--;
@@ -117,7 +114,14 @@ contract QuadraticVoting {
         address executableContract
     ) external votingIsOpen {
         require(participants[msg.sender], "You are not a participant");
+        // TODO: Comprobar que la propuesta no está repetida
+
         Proposal storage p = proposals[proposalCounter];
+
+        if (budget == 0) { // Guardamos la id de la propuesta de signaling
+            signalingProposals.push(proposalCounter);
+        }
+
         p.owner = msg.sender;
         p.title = title;
         p.description = description;
@@ -126,6 +130,8 @@ contract QuadraticVoting {
         p.approved = false;
         p.cancelled = false;
         pendingProposals.push(proposalCounter++);
+
+        // TODO: devolver ID
     }
 
     // Función para cancelar una propuesta
@@ -147,6 +153,18 @@ contract QuadraticVoting {
         }
         pendingProposals.pop();
 
+        if (proposals[proposalId].budget == 0) { // Si la propuesta es de signaling
+            uint len1 = signalingProposals.length;
+            for (uint i = 0; i < len1; ++i) {
+                if (signalingProposals[i] == proposalId) {
+                    signalingProposals[i] = signalingProposals[len - 1];
+                    break;
+                }
+            }
+            pendingProposals.pop();
+        }
+
+        // TODO: Posible ataque de Denial Of Service ??
         Proposal storage p = proposals[proposalId];
         uint256 vlen = p.voters.length;
         for (uint256 i = 0; i < vlen; i++) {
@@ -194,7 +212,7 @@ contract QuadraticVoting {
 
     // Función para obtener las propuestas de señalización
     function getSignalingProposals() public view returns (uint256[] memory) {
-        uint256 len = pendingProposals.length;
+        /* uint256 len = pendingProposals.length;
         uint256[] memory signalingProposals = new uint256[](len);
         uint256 counter = 0;
         for (uint256 i = 0; i < len; i++) {
@@ -202,7 +220,7 @@ contract QuadraticVoting {
             if (proposals[id].budget == 0) {
                 signalingProposals[counter++] = id;
             }
-        }
+        } */
         return signalingProposals;
     }
 
@@ -334,9 +352,16 @@ contract QuadraticVoting {
     // Función para cerrar la votación
     function closeVoting() external onlyOwner votingIsOpen {
         votingOpen = false;
+
+        // TODO: Descartar las propuestas de financiación
+
+        // TODO: for para ejecutar todas las propuestas de signaling
+
+        // El presupuesto de la votación no gastado en las propuestas se transfiere al propietario del contrato de votación
+        payable(owner).transfer(totalBudget);
     }
 
-    // Parte opcional: cada participantes withdraw sus token
+    // Parte opcional: cada participante extrae sus tokens -> AllowForPull
     function withdrawTokens() external {
         require(!votingOpen, "Voting is still open");
         uint256 value = 0;
@@ -364,6 +389,5 @@ contract QuadraticVoting {
             prop.numVotes,
             prop.numTokens
         );
-        prop.approved = true;
     }
 }

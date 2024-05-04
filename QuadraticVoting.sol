@@ -76,13 +76,20 @@ contract QuadraticVoting {
     }
 
     // Función para abrir la votación
-    function openVoting(uint256 initialBudget)
+    function openVoting()
         external
+        payable
         onlyOwner
         votingIsClosed
     {
-        totalBudget = initialBudget;
+        totalBudget = msg.value;
         votingOpen = true;
+
+        // Inicialización
+        proposalCounter = 0;
+        delete pendingProposals;
+        delete approvedProposals;
+        delete signalingProposals;
     }
 
     // Función para agregar un participante
@@ -99,8 +106,9 @@ contract QuadraticVoting {
     // Función para eliminar un participante
     function removeParticipant() external {
         require(participants[msg.sender], "Participant not found");
-        payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
-        token.burn(msg.sender, token.balanceOf(msg.sender));
+        uint balan = token.balanceOf(msg.sender);
+        token.burn(msg.sender, balan);
+        payable(msg.sender).transfer(balan * tokenPrice);
 
         delete participants[msg.sender];
         numParticipant--;
@@ -112,7 +120,7 @@ contract QuadraticVoting {
         string memory description,
         uint256 budget,
         address executableContract
-    ) external votingIsOpen {
+    ) external votingIsOpen returns (uint256) {
         require(participants[msg.sender], "You are not a participant");
         // TODO: Comprobar que la propuesta no está repetida
 
@@ -126,12 +134,22 @@ contract QuadraticVoting {
         p.title = title;
         p.description = description;
         p.budget = budget;
+        p.numVotes = 0;
+        p.numTokens = 0;
         p.executableContract = executableContract;
         p.approved = false;
         p.cancelled = false;
-        pendingProposals.push(proposalCounter++);
 
-        // TODO: devolver ID
+        // Eliminar posible voterRecords del proposal anterior
+        uint len = p.voters.length;
+        for (uint i = 0; i < len; i++) {
+            delete p.votesRecord[p.voters[i]];
+        }
+        delete p.voters;
+
+        pendingProposals.push(proposalCounter);
+
+        return proposalCounter++;
     }
 
     // Función para cancelar una propuesta
@@ -352,11 +370,6 @@ contract QuadraticVoting {
     // Función para cerrar la votación
     function closeVoting() external onlyOwner votingIsOpen {
         votingOpen = false;
-
-        // TODO: Descartar las propuestas de financiación
-
-        // TODO: for para ejecutar todas las propuestas de signaling
-
         // El presupuesto de la votación no gastado en las propuestas se transfiere al propietario del contrato de votación
         payable(owner).transfer(totalBudget);
     }
@@ -389,5 +402,6 @@ contract QuadraticVoting {
             prop.numVotes,
             prop.numTokens
         );
+        prop.approved = true;
     }
 }

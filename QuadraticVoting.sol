@@ -80,6 +80,11 @@ contract QuadraticVoting {
     {
         totalBudget = initialBudget;
         votingOpen = true;
+
+        // Inicialización
+        proposalCounter = 0;
+        delete pendingProposals;
+        delete approvedProposals;
     }
 
     // Función para agregar un participante
@@ -96,8 +101,9 @@ contract QuadraticVoting {
     // Función para eliminar un participante
     function removeParticipant() external {
         require(participants[msg.sender], "Participant not found");
-        payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
-        token.burn(msg.sender, token.balanceOf(msg.sender));
+        uint balan = token.balanceOf(msg.sender);
+        token.burn(msg.sender, balan);
+        payable(msg.sender).transfer(balan * tokenPrice);
 
         delete participants[msg.sender];
         numParticipant--;
@@ -328,7 +334,6 @@ contract QuadraticVoting {
     // Función para cerrar la votación
     function closeVoting() external onlyOwner votingIsOpen {
         votingOpen = false;
-        payable(owner).transfer(totalBudget);
     }
 
     // Parte opcional: cada participantes withdraw sus token

@@ -41,6 +41,9 @@ contract QuadraticVoting {
     // Array de propuestas aprobadas
     uint256[] approvedProposals;
 
+    // Array para las propuestas de signaling
+    uint256[] signalingProposals;
+
     // Mapa de propuestas
     mapping(uint256 => Proposal) public proposals;
 
@@ -73,13 +76,20 @@ contract QuadraticVoting {
     }
 
     // Función para abrir la votación
-    function openVoting(uint256 initialBudget)
+    function openVoting()
         external
+        payable
         onlyOwner
         votingIsClosed
     {
-        totalBudget = initialBudget;
+        totalBudget = msg.value;
         votingOpen = true;
+
+        // Inicialización
+        proposalCounter = 0;
+        delete pendingProposals;
+        delete approvedProposals;
+        delete signalingProposals;
     }
 
     // Función para agregar un participante
@@ -96,8 +106,9 @@ contract QuadraticVoting {
     // Función para eliminar un participante
     function removeParticipant() external {
         require(participants[msg.sender], "Participant not found");
-        payable(msg.sender).transfer(token.balanceOf(msg.sender) * tokenPrice);
-        token.burn(msg.sender, token.balanceOf(msg.sender));
+        uint balan = token.balanceOf(msg.sender);
+        token.burn(msg.sender, balan);
+        payable(msg.sender).transfer(balan * tokenPrice);
 
         delete participants[msg.sender];
         numParticipant--;
@@ -109,17 +120,34 @@ contract QuadraticVoting {
         string memory description,
         uint256 budget,
         address executableContract
-    ) external votingIsOpen {
+    ) external votingIsOpen returns (uint256) {
         require(participants[msg.sender], "You are not a participant");
         Proposal storage p = proposals[proposalCounter];
+
+        if (budget == 0) { // Guardamos la id de la propuesta de signaling
+            signalingProposals.push(proposalCounter);
+        }
+
         p.owner = msg.sender;
         p.title = title;
         p.description = description;
         p.budget = budget;
+        p.numVotes = 0;
+        p.numTokens = 0;
         p.executableContract = executableContract;
         p.approved = false;
         p.cancelled = false;
-        pendingProposals.push(proposalCounter++);
+
+        // Eliminar posible voterRecords del proposal anterior
+        uint len = p.voters.length;
+        for (uint i = 0; i < len; i++) {
+            delete p.votesRecord[p.voters[i]];
+        }
+        delete p.voters;
+
+        pendingProposals.push(proposalCounter);
+
+        return proposalCounter++;
     }
 
     // Función para cancelar una propuesta
@@ -140,6 +168,17 @@ contract QuadraticVoting {
             }
         }
         pendingProposals.pop();
+
+        if (proposals[proposalId].budget == 0) { // Si la propuesta es de signaling
+            uint len1 = signalingProposals.length;
+            for (uint i = 0; i < len1; ++i) {
+                if (signalingProposals[i] == proposalId) {
+                    signalingProposals[i] = signalingProposals[len - 1];
+                    break;
+                }
+            }
+            pendingProposals.pop();
+        }
 
         Proposal storage p = proposals[proposalId];
         uint256 vlen = p.voters.length;
@@ -188,7 +227,7 @@ contract QuadraticVoting {
 
     // Función para obtener las propuestas de señalización
     function getSignalingProposals() public view returns (uint256[] memory) {
-        uint256 len = pendingProposals.length;
+        /* uint256 len = pendingProposals.length;
         uint256[] memory signalingProposals = new uint256[](len);
         uint256 counter = 0;
         for (uint256 i = 0; i < len; i++) {
@@ -196,7 +235,7 @@ contract QuadraticVoting {
             if (proposals[id].budget == 0) {
                 signalingProposals[counter++] = id;
             }
-        }
+        } */
         return signalingProposals;
     }
 
@@ -277,14 +316,24 @@ contract QuadraticVoting {
         uint256 currentVotes = proposals[proposalId].votesRecord[msg.sender];
         require(currentVotes >= numVotes, "Not enough votes");
 
-        // TODO: Si el votante tiene 0 votos en la propuesta, borrarlo de la lista de votantes de la propuesta
-
         uint256 newVotes = currentVotes - numVotes;
         uint256 tokensToReturn = currentVotes ** 2 - newVotes ** 2;
 
-        proposals[proposalId].numVotes -= numVotes;
-        proposals[proposalId].numTokens -= tokensToReturn;
-        if (proposals[proposalId].budget > 0) {
+        // Si el votante tiene 0 votos en la propuesta, borrarlo de la lista de votantes de la propuesta
+        Proposal storage prop = proposals[proposalId];
+        if (newVotes == 0) {
+            uint len = prop.voters.length;
+            for (uint i = 0; i < len; i++) {
+                if (prop.voters[i] == msg.sender) {
+                    prop.voters[i] = prop.voters[len - 1];
+                    break;
+                }
+            }
+        }
+
+        prop.numVotes -= numVotes;
+        prop.numTokens -= tokensToReturn;
+        if (prop.budget > 0) {
             totalBudget -= tokensToReturn * tokenPrice;
         }
         token.transfer(msg.sender, tokensToReturn);
@@ -313,8 +362,8 @@ contract QuadraticVoting {
 
             for (uint256 i = 0; i < len; i++) {
                 if (pendingProposals[i] == proposalId) {
-                    pendingProposals[i] = pendingProposals[len - 1];
-                    approvedProposals.push(proposalId);
+                    pendingProposals[i] = pendingProposals[len - 1]; // eliminamos la propuesta de las pendientes
+                    approvedProposals.push(proposalId); //añadimos a la lista de propuestas aprovadas
                     break;
                 }
             }
@@ -328,12 +377,15 @@ contract QuadraticVoting {
     // Función para cerrar la votación
     function closeVoting() external onlyOwner votingIsOpen {
         votingOpen = false;
+    }
+
+    function withdrawOwner() external onlyOwner votingIsClosed {
+        // El presupuesto de la votación no gastado en las propuestas se transfiere al propietario del contrato de votación
         payable(owner).transfer(totalBudget);
     }
 
-    // Parte opcional: cada participantes withdraw sus token
-    function withdrawTokens() external {
-        require(!votingOpen, "Voting is still open");
+    // Parte opcional: cada participante extrae sus tokens -> AllowForPull
+    function withdrawTokens() external votingIsClosed {
         uint256 value = 0;
         uint256 len = pendingProposals.length;
         for (uint256 i = 0; i < len; i++) {
@@ -344,8 +396,7 @@ contract QuadraticVoting {
     }
 
     // Parte opcional: cada propietario del signaling proposal execute sus proposal
-    function executeSignalingProposal(uint256 proposalId) external {
-        require(!votingOpen, "Voting is still open");
+    function executeSignalingProposal(uint256 proposalId) external votingIsClosed {
         require(proposalId < proposalCounter, "Proposal does not exist");
 
         Proposal storage prop = proposals[proposalId];

@@ -177,7 +177,7 @@ contract QuadraticVoting {
                     break;
                 }
             }
-            pendingProposals.pop();
+            signalingProposals.pop();
         }
 
         Proposal storage p = proposals[proposalId];

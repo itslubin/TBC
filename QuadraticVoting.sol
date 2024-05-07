@@ -227,15 +227,6 @@ contract QuadraticVoting {
 
     // Función para obtener las propuestas de señalización
     function getSignalingProposals() public view returns (uint256[] memory) {
-        /* uint256 len = pendingProposals.length;
-        uint256[] memory signalingProposals = new uint256[](len);
-        uint256 counter = 0;
-        for (uint256 i = 0; i < len; i++) {
-            uint256 id = pendingProposals[i];
-            if (proposals[id].budget == 0) {
-                signalingProposals[counter++] = id;
-            }
-        } */
         return signalingProposals;
     }
 
